@@ -28,30 +28,16 @@ jobs:
         with:
           python-version: 3.9
 
-      - name: Create external directory if it does not exist
-        run: mkdir -p external
-
-      - name: Remove existing douban2notion directory if exists
+      - name: Clone douban2notion Repository
         run: |
-          if [ -d external/douban2notion ]; then rm -rf external/douban2notion; fi
-
-      - name: Clone douban2notion repository
-        run: |
-          git clone https://github.com/malinkang/douban2notion.git external/douban2notion
+          git clone https://github.com/fevedy/douban2notion.git
+          cd douban2notion
+          python -m pip install .
 
       - name: Install dependencies
         run: |
-          cd external/douban2notion
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Install douban2notion
-        run: |
-          cd external/douban2notion
-          python setup.py install
-
-      - name: Verify douban installation
-        run: which douban
 
       - name: douban movie sync
         run: |
