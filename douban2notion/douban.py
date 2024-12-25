@@ -1,19 +1,15 @@
 import argparse
-from email import feedparser
 import json
 import os
-import re
 import pendulum
 from retrying import retry
 import requests
 from douban2notion.notion_helper import NotionHelper
 from douban2notion import utils
-DOUBAN_API_HOST = os.getenv("DOUBAN_API_HOST", "frodo.douban.com")
-DOUBAN_API_KEY = os.getenv("DOUBAN_API_KEY", "0ac44ae016490db2204ce0a042db2916")
-
-from douban2notion.config import movie_properties_type_dict, book_properties_type_dict, TAG_ICON_URL, USER_ICON_URL
+from douban2notion.config import movie_properties_type_dict, TAG_ICON_URL, USER_ICON_URL
 from douban2notion.utils import get_icon
 from dotenv import load_dotenv
+
 load_dotenv()
 
 rating = {
@@ -23,12 +19,16 @@ rating = {
     4: "⭐️⭐️⭐️⭐️",
     5: "⭐️⭐️⭐️⭐️⭐️",
 }
+
 movie_status = {
     "mark": "想看",
     "doing": "在看",
     "done": "看过",
 }
+
 AUTH_TOKEN = os.getenv("AUTH_TOKEN")
+DOUBAN_API_HOST = os.getenv("DOUBAN_API_HOST", "frodo.douban.com")
+DOUBAN_API_KEY = os.getenv("DOUBAN_API_KEY", "0ac44ae016490db2204ce0a042db2916")
 
 headers = {
     "host": DOUBAN_API_HOST,
@@ -42,7 +42,6 @@ def fetch_subjects(user, type_, status):
     offset = 0
     page = 0
     url = f"https://{DOUBAN_API_HOST}/api/v2/user/{user}/interests"
-    total = 0
     results = []
     while True:
         params = {
@@ -60,8 +59,6 @@ def fetch_subjects(user, type_, status):
             if len(interests) == 0:
                 break
             results.extend(interests)
-            print(f"total = {total}")
-            print(f"size = {len(results)}")
             page += 1
             offset = page * 50
     return results
@@ -80,20 +77,17 @@ def insert_movie(douban_name, notion_helper):
             "评分": movie.get("评分"),
             "page_id": i.get("id")
         }
-    print(f"notion {len(notion_movie_dict)}")
     results = []
     for i in movie_status.keys():
         results.extend(fetch_subjects(douban_name, "movie", i))
     for result in results:
         movie = {}
         if not result:
-            print(result)
             continue
         subject = result.get("subject")
         movie["电影名"] = subject.get("title")
         create_time = result.get("create_time")
         create_time = pendulum.parse(create_time, tz=utils.tz)
-        # 时间上传到Notion会丢掉秒的信息，这里直接将秒设置为0
         create_time = create_time.replace(second=0)
         movie["日期"] = create_time.int_timestamp
         movie["豆瓣链接"] = subject.get("url")
@@ -117,7 +111,6 @@ def insert_movie(douban_name, notion_helper):
                     properties=properties
                 )
         else:
-            print(f"插入{movie.get('电影名')}")
             cover = subject.get("pic").get("normal")
             if not cover.endswith('.webp'):
                 cover = cover.rsplit('.', 1)[0] + '.webp'
