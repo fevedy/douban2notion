@@ -1,19 +1,34 @@
 import argparse
+from email import feedparser
+import json
 import os
+import re
 import pendulum
 from retrying import retry
 import requests
 from douban2notion.notion_helper import NotionHelper
 from douban2notion import utils
-from douban2notion.config import movie_properties_type_dict, movie_status, rating
-from douban2notion.utils import get_icon
-from dotenv import load_dotenv
-
-load_dotenv()
-
-AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 DOUBAN_API_HOST = os.getenv("DOUBAN_API_HOST", "frodo.douban.com")
 DOUBAN_API_KEY = os.getenv("DOUBAN_API_KEY", "0ac44ae016490db2204ce0a042db2916")
+
+from douban2notion.config import movie_properties_type_dict,book_properties_type_dict, TAG_ICON_URL, USER_ICON_URL
+from douban2notion.utils import get_icon
+from dotenv import load_dotenv
+load_dotenv()
+rating = {
+    1: "⭐️",
+    2: "⭐️⭐️",
+    3: "⭐️⭐️⭐️",
+    4: "⭐️⭐️⭐️⭐️",
+    5: "⭐️⭐️⭐️⭐️⭐️",
+}
+movie_status = {
+    "mark": "想看",
+    "doing": "在看",
+    "done": "看过",
+}
+
+AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 
 headers = {
     "host": DOUBAN_API_HOST,
@@ -21,7 +36,6 @@ headers = {
     "user-agent": "User-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 15_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.16(0x18001023) NetType/WIFI Language/zh_CN",
     "referer": "https://servicewechat.com/wx2f9b06c1de1ccfca/84/page-frame.html",
 }
-
 @retry(stop_max_attempt_number=3, wait_fixed=5000)
 def fetch_subjects(user, type_, status):
     offset = 0
