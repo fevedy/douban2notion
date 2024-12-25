@@ -30,8 +30,8 @@ jobs:
 
       - name: Clone douban2notion Repository
         run: |
-          git clone https://github.com/fevedy/douban2notion.git
-          cd douban2notion
+          git clone https://github.com/fevedy/douban2notion.git external_douban2notion
+          cd external_douban2notion
           python -m pip install .
 
       - name: Install dependencies
