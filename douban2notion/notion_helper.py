@@ -190,3 +190,42 @@ class NotionHelper:
             has_more = response.get("has_more")
             start_cursor = response.get("next_cursor")
         return results
+        
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def query_all(self, database_id):
+        """获取database中所有的数据"""
+        results = []
+        has_more = True
+        start_cursor = None
+        while has_more:
+            response = self.client.databases.query(
+                database_id=database_id,
+                start_cursor=start_cursor,
+                page_size=100,
+            )
+            start_cursor = response.get("next_cursor")
+            has_more = response.get("has_more")
+            results.extend(response.get("results"))
+        return results
+        
+    def get_date_relation(self, properties, date):
+        properties["年"] = get_relation(
+            [
+                self.get_year_relation_id(date),
+            ]
+        )
+        properties["月"] = get_relation(
+            [
+                self.get_month_relation_id(date),
+            ]
+        )
+        properties["周"] = get_relation(
+            [
+                self.get_week_relation_id(date),
+            ]
+        )
+        properties["日"] = get_relation(
+            [
+                self.get_day_relation_id(date),
+            ]
+        )
