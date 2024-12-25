@@ -94,15 +94,15 @@ class NotionHelper:
         # 更新 image block 的链接
         return self.client.blocks.update(block_id=block_id, embed={"url": url})
 
-    def get_week_relation_id(self, date):
-        year = date.isocalendar().year
-        week = date.isocalendar().week
-        week = f"{year}年第{week}周"
-        start, end = get_first_and_last_day_of_week(date)
-        properties = {"日期": get_date(format_date(start), format_date(end))}
-        return self.get_relation_id(
-            week, self.week_database_id, TARGET_ICON_URL, properties
-        )
+    #def get_week_relation_id(self, date):
+        #year = date.isocalendar().year
+        #week = date.isocalendar().week
+        #week = f"{year}年第{week}周"
+        #start, end = get_first_and_last_day_of_week(date)
+        #properties = {"日期": get_date(format_date(start), format_date(end))}
+        #return self.get_relation_id(
+            #week, self.week_database_id, TARGET_ICON_URL, properties
+        #)
 
     def get_year_relation_id(self, date):
         year = date.strftime("%Y")
@@ -219,11 +219,11 @@ class NotionHelper:
                 self.get_month_relation_id(date),
             ]
         )
-        properties["周"] = get_relation(
-            [
-                self.get_week_relation_id(date),
-            ]
-        )
+        #properties["周"] = get_relation(
+            #[
+                #self.get_week_relation_id(date),
+            #]
+        #)
         properties["日"] = get_relation(
             [
                 self.get_day_relation_id(date),
