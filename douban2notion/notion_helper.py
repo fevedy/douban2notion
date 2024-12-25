@@ -43,7 +43,7 @@ class NotionHelper:
         self.client = Client(auth=notion_token, log_level=logging.ERROR)
         self.__cache = {}
         self.page_id = self.extract_page_id(page_url)
-        self.search_database(self.page_id)
+        #self.search_database(self.page_id)
         for key in self.database_name_dict.keys():
             if os.getenv(key) != None and os.getenv(key) != "":
                 self.database_name_dict[key] = os.getenv(key)
