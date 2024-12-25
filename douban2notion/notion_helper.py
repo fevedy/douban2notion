@@ -95,8 +95,8 @@ class NotionHelper:
         )
         if match:
             return match.group(0)
-        else:
-            raise Exception(f"获取NotionID失败，请检查输入的Url是否正确")
+        #else:
+            #raise Exception(f"获取NotionID失败，请检查输入的Url是否正确")
 
     @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def search_database(self, block_id):
