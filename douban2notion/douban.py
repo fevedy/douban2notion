@@ -11,7 +11,7 @@ from douban2notion import utils
 DOUBAN_API_HOST = os.getenv("DOUBAN_API_HOST", "frodo.douban.com")
 DOUBAN_API_KEY = os.getenv("DOUBAN_API_KEY", "0ac44ae016490db2204ce0a042db2916")
 
-from douban2notion.config import movie_properties_type_dict, TAG_ICON_URL, USER_ICON_URL
+from douban2notion.config import movie_properties_type_dict, book_properties_type_dict, TAG_ICON_URL, USER_ICON_URL
 from douban2notion.utils import get_icon
 from dotenv import load_dotenv
 load_dotenv()
@@ -23,13 +23,11 @@ rating = {
     4: "⭐️⭐️⭐️⭐️",
     5: "⭐️⭐️⭐️⭐️⭐️",
 }
-
 movie_status = {
     "mark": "想看",
     "doing": "在看",
     "done": "看过",
 }
-
 AUTH_TOKEN = os.getenv("AUTH_TOKEN")
 
 headers = {
@@ -68,7 +66,6 @@ def fetch_subjects(user, type_, status):
             offset = page * 50
     return results
 
-
 def insert_movie(douban_name, notion_helper):
     notion_movies = notion_helper.query_all(database_id=notion_helper.movie_database_id)
     notion_movie_dict = {}
@@ -96,7 +93,7 @@ def insert_movie(douban_name, notion_helper):
         movie["电影名"] = subject.get("title")
         create_time = result.get("create_time")
         create_time = pendulum.parse(create_time, tz=utils.tz)
-        #时间上传到Notion会丢掉秒的信息，这里直接将秒设置为0
+        # 时间上传到Notion会丢掉秒的信息，这里直接将秒设置为0
         create_time = create_time.replace(second=0)
         movie["日期"] = create_time.int_timestamp
         movie["豆瓣链接"] = subject.get("url")
@@ -106,20 +103,19 @@ def insert_movie(douban_name, notion_helper):
         if result.get("comment"):
             movie["短评"] = result.get("comment")
         if notion_movie_dict.get(movie.get("豆瓣链接")):
-            notion_movie = notion_movie_dict.get(movie.get("豆瓣链接"))
+            notion_movive = notion_movie_dict.get(movie.get("豆瓣链接"))
             if (
-                notion_movie.get("日期") != movie.get("日期")
-                or notion_movie.get("短评") != movie.get("短评")
-                or notion_movie.get("状态") != movie.get("状态")
-                or notion_movie.get("评分") != movie.get("评分")
+                notion_movive.get("日期") != movie.get("日期")
+                or notion_movive.get("短评") != movie.get("短评")
+                or notion_movive.get("状态") != movie.get("状态")
+                or notion_movive.get("评分") != movie.get("评分")
             ):
                 properties = utils.get_properties(movie, movie_properties_type_dict)
                 notion_helper.get_date_relation(properties, create_time)
                 notion_helper.update_page(
-                    page_id=notion_movie.get("page_id"),
+                    page_id=notion_movive.get("page_id"),
                     properties=properties
                 )
-
         else:
             print(f"插入{movie.get('电影名')}")
             cover = subject.get("pic").get("normal")
@@ -137,7 +133,6 @@ def insert_movie(douban_name, notion_helper):
                 parent=parent, properties=properties, icon=get_icon(cover)
             )
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("type")
@@ -148,7 +143,8 @@ def main():
     douban_name = os.getenv("DOUBAN_NAME", None)
     if is_movie:
         insert_movie(douban_name, notion_helper)
-
+    else:
+        insert_book(douban_name, notion_helper)
 
 if __name__ == "__main__":
     main()
