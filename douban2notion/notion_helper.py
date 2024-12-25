@@ -1,88 +1,192 @@
-# 文件路径: douban2notion/notion_helper.py
-
+import logging
 import os
-import requests
-from douban2notion import utils
-from douban2notion.config import TAG_ICON_URL, USER_ICON_URL
+import re
 
-AUTH_TOKEN = os.getenv("AUTH_TOKEN")
+from notion_client import Client
+from retrying import retry
+
+from douban2notion.utils import (
+    format_date,
+    get_date,
+    get_first_and_last_day_of_month,
+    get_first_and_last_day_of_week,
+    get_first_and_last_day_of_year,
+    get_icon,
+    get_relation,
+    get_title,
+)
+
+TAG_ICON_URL = "https://www.notion.so/icons/tag_gray.svg"
+USER_ICON_URL = "https://www.notion.so/icons/user-circle-filled_gray.svg"
+TARGET_ICON_URL = "https://www.notion.so/icons/target_red.svg"
+BOOKMARK_ICON_URL = "https://www.notion.so/icons/bookmark_gray.svg"
+
 
 class NotionHelper:
-    def __init__(self, type_):
-        self.type = type_
-        self.movie_database_id = os.getenv("MOVIE_DATABASE_ID")
-        self.book_database_id = os.getenv("BOOK_DATABASE_ID")
-        self.category_database_id = os.getenv("CATEGORY_DATABASE_ID")
-        self.author_database_id = os.getenv("AUTHOR_DATABASE_ID")
-        self.director_database_id = os.getenv("DIRECTOR_DATABASE_ID")
-    
-    def query_all(self, database_id):
-        url = f"https://api.notion.com/v1/databases/{database_id}/query"
-        headers = {
-            "Authorization": f"Bearer {AUTH_TOKEN}",
-            "Content-Type": "application/json",
-            "Notion-Version": "2021-05-13",
-        }
-        has_more = True
-        results = []
-        next_cursor = None
+    database_name_dict = {
+        "MOVIE_DATABASE_NAME": "电影",
+        "YEAR_DATABASE_NAME": "年",
+        "MONTH_DATABASE_NAME": "月",
+    }
+    database_id_dict = {}
+    image_dict = {}
 
-        while has_more:
-            payload = {"page_size": 100}
-            if next_cursor:
-                payload["start_cursor"] = next_cursor
-            
-            response = requests.post(url, headers=headers, json=payload)
-            if response.status_code == 200:
-                data = response.json()
-                results.extend(data.get("results", []))
-                has_more = data.get("has_more", False)
-                next_cursor = data.get("next_cursor", None)
+    def __init__(self, type):
+        is_movie = True if type == "movie" else False
+        page_url = os.getenv("NOTION_MOVIE_URL") if is_movie else os.getenv("NOTION_BOOK_URL")
+        notion_token = os.getenv("NOTION_TOKEN")
+        if not notion_token:
+            if is_movie:
+                notion_token = os.getenv("MOVIE_NOTION_TOKEN")
             else:
-                raise Exception(f"Error querying Notion database: {response.text}")
-        
-        return results
+                notion_token = os.getenv("BOOK_NOTION_TOKEN")
+        self.client = Client(auth=notion_token, log_level=logging.ERROR)
+        self.__cache = {}
+        self.page_id = self.extract_page_id(page_url)
+        self.search_database(self.page_id)
+        for key in self.database_name_dict.keys():
+            if os.getenv(key) != None and os.getenv(key) != "":
+                self.database_name_dict[key] = os.getenv(key)
+        self.movie_database_id = self.database_id_dict.get(
+            self.database_name_dict.get("MOVIE_DATABASE_NAME")
+        )
+        self.year_database_id = self.database_id_dict.get(
+            self.database_name_dict.get("YEAR_DATABASE_NAME")
+        )
+        self.month_database_id = self.database_id_dict.get(
+            self.database_name_dict.get("MONTH_DATABASE_NAME")
+        )
 
-    def get_date_relation(self, properties, date):
-        properties["日期"] = {
-            "date": {
-                "start": date.to_iso8601_string()
-            }
-        }
+    def write_database_id(self, database_id):
+        env_file = os.getenv('GITHUB_ENV')
+        # 将值写入环境文件
+        with open(env_file, "a") as file:
+            file.write(f"DATABASE_ID={database_id}\n")
 
-    def get_relation_id(self, name, database_id, icon_url):
-        # 实现获取关系ID的方法
-        pass
+    def extract_page_id(self, notion_url):
+        # 正则表达式匹配 32 个字符的 Notion page_id
+        match = re.search(
+            r"([a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})",
+            notion_url,
+        )
+        if match:
+            return match.group(0)
 
-    def create_page(self, parent, properties, icon):
-        url = "https://api.notion.com/v1/pages"
-        headers = {
-            "Authorization": f"Bearer {AUTH_TOKEN}",
-            "Content-Type": "application/json",
-            "Notion-Version": "2021-05-13",
-        }
-        payload = {
-            "parent": parent,
-            "properties": properties,
-            "icon": {
-                "type": "external",
-                "external": {"url": icon}
-            }
-        }
-        response = requests.post(url, headers=headers, json=payload)
-        if response.status_code != 200:
-            raise Exception(f"Error creating Notion page: {response.text}")
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def search_database(self, block_id):
+        children = self.client.blocks.children.list(block_id=block_id)["results"]
+        # 遍历子块
+        for child in children:
+            # 检查子块的类型
+            if child["type"] == "child_database":
+                self.database_id_dict[
+                    child.get("child_database").get("title")
+                ] = child.get("id")
+            elif child["type"] == "embed" and child.get("embed").get("url"):
+                if child.get("embed").get("url").startswith("https://heatmap.malinkang.com/"):
+                    self.heatmap_block_id = child.get("id")
+            # 如果子块有子块，递归调用函数
+            if "has_children" in child and child["has_children"]:
+                self.search_database(child["id"])
 
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def update_heatmap(self, block_id, url):
+        # 更新 image block 的链接
+        return self.client.blocks.update(block_id=block_id, embed={"url": url})
+
+    def get_week_relation_id(self, date):
+        year = date.isocalendar().year
+        week = date.isocalendar().week
+        week = f"{year}年第{week}周"
+        start, end = get_first_and_last_day_of_week(date)
+        properties = {"日期": get_date(format_date(start), format_date(end))}
+        return self.get_relation_id(
+            week, self.week_database_id, TARGET_ICON_URL, properties
+        )
+
+    def get_year_relation_id(self, date):
+        year = date.strftime("%Y")
+        start, end = get_first_and_last_day_of_year(date)
+        properties = {"日期": get_date(format_date(start), format_date(end))}
+        return self.get_relation_id(
+            year, self.year_database_id, TARGET_ICON_URL, properties
+        )
+
+    def get_month_relation_id(self, date):
+        year = date.strftime("%Y")
+        month = date.strftime("%m")
+        month_name = f"{year}年{month}月"
+        start, end = get_first_and_last_day_of_month(date)
+        properties = {"日期": get_date(format_date(start), format_date(end))}
+        return self.get_relation_id(
+            month_name, self.month_database_id, TARGET_ICON_URL, properties
+        )
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def get_relation_id(self, name, id, icon, properties={}):
+        key = f"{id}{name}"
+        if key in self.__cache:
+            return self.__cache.get(key)
+        filter = {"property": "标题", "title": {"equals": name}}
+        response = self.client.databases.query(database_id=id, filter=filter)
+        if len(response.get("results")) == 0:
+            parent = {"database_id": id, "type": "database_id"}
+            properties["标题"] = get_title(name)
+            page_id = self.client.pages.create(
+                parent=parent, properties=properties, icon=get_icon(icon)
+            ).get("id")
+        else:
+            page_id = response.get("results")[0].get("id")
+        self.__cache[key] = page_id
+        return page_id
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
     def update_page(self, page_id, properties):
-        url = f"https://api.notion.com/v1/pages/{page_id}"
-        headers = {
-            "Authorization": f"Bearer {AUTH_TOKEN}",
-            "Content-Type": "application/json",
-            "Notion-Version": "2021-05-13",
-        }
-        payload = {
-            "properties": properties
-        }
-        response = requests.patch(url, headers=headers, json=payload)
-        if response.status_code != 200:
-            raise Exception(f"Error updating Notion page: {response.text}")
+        return self.client.pages.update(
+            page_id=page_id, properties=properties
+        )
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def create_page(self, parent, properties, icon):
+        return self.client.pages.create(parent=parent, properties=properties, icon=icon)
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def query(self, **kwargs):
+        kwargs = {k: v for k, v in kwargs.items() if v}
+        return self.client.databases.query(**kwargs)
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def get_block_children(self, id):
+        response = self.client.blocks.children.list(id)
+        return response.get("results")
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def append_blocks(self, block_id, children):
+        return self.client.blocks.children.append(block_id=block_id, children=children)
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def append_blocks_after(self, block_id, children, after):
+        return self.client.blocks.children.append(
+            block_id=block_id, children=children, after=after
+        )
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def delete_block(self, block_id):
+        return self.client.blocks.delete(block_id=block_id)
+
+    @retry(stop_max_attempt_number=3, wait_fixed=5000)
+    def query_all_by_book(self, database_id, filter):
+        results = []
+        has_more = True
+        start_cursor = None
+        while has_more:
+            response = self.client.databases.query(
+                database_id=database_id,
+                filter=filter,
+                start_cursor=start_cursor,
+                page_size=100,
+            )
+            results.extend(response.get("results"))
+            has_more = response.get("has_more")
+            start_cursor = response.get("next_cursor")
+        return results
