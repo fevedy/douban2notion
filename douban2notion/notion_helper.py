@@ -219,13 +219,3 @@ class NotionHelper:
                 self.get_month_relation_id(date),
             ]
         )
-        #properties["周"] = get_relation(
-            #[
-                #self.get_week_relation_id(date),
-            #]
-        #)
-        properties["日"] = get_relation(
-            [
-                self.get_day_relation_id(date),
-            ]
-        )
